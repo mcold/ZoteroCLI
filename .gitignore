@@ -1,0 +1,5 @@
+*test*
+*.sqlite
+todo
+__pycache__
+*.txt
