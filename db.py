@@ -7,6 +7,85 @@ db = str(Path.home()) + sep + 'Zotero\\zotero.sqlite'
 
 id_num = 0
 
+# TODO: move connection object to zg
+
+class Collection:
+
+    def __init__(self, t: tuple):
+        if len(t) > 0:
+            self.id = t[0]
+            self.name = t[1]
+            self.parentId = t[2]
+            self.childs = list()
+            self.items = list()
+        else:
+            self.id = None
+            self.name = None
+            self.parentId = None
+            self.childs = self.get_childs()
+            self.items = self.get_items()
+
+    def __str__(self) -> str:
+        return 'id: {id}\name: {name}\nparentId: {parentId}\n'.format(id=str(self.id), name=self.name, parentId=self.parentId)
+
+    def __repr__(self) -> str:
+        res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
+        res += '{name}\n\n'.format(name=self.name)
+        res += ''.join([x.__repr__() for x in self.items])
+        res += ''.join([x.__repr__() for x in self.childs])
+        res += '</gingko-card>\n'
+        return res
+    
+    def get_childs(self):
+        with connect(db) as conn:
+            cur = conn.cursor()
+            cur.execute("""select collectionID,
+                                  collectionName
+                             from collections
+                            where parentCollectionID = {id}
+                            order by collectionID;""".format(id = self.id))
+        return [Collection(result) for result in cur.fetchall()]
+
+    def get_items(self):
+        with connect(db) as conn:
+            cur = conn.cursor()
+            cur.execute("""select ID, 
+                                  text, 
+                                  comment, 
+                                  tag, 
+                                  rank, 
+                                  pageNum,
+                                  position
+                            from (select ian.itemID as ID,
+                                         ian.text,
+                                         ian.comment,
+                                         t.name as tag,
+                                         case ian.color
+                                           when '#ffd400' then 1
+                                           when '#ff6666' then 2
+                                           when '#5fb236' then 3
+                                           when '#2ea8e5' then 4
+                                           when '#a28ae5' then 5
+                                           when '#e56eee' then 6
+                                           when '#f19837' then 7
+                                           when '#aaaaaa' then 8
+                                         end as rank,
+                                         cast(ian.pageLabel as decimal) as pageNum,
+                                         position
+                                    from collectionItems ci
+                                    join items i on i.itemID = ci.itemID
+                                    join itemData d on d.itemID = i.itemID
+                                    join itemDataValues v on v.valueID = d.valueID
+                                    join itemAttachments ia on ia.parentItemID = i.itemID
+                                    join itemAnnotations ian on ian.parentItemID = ia.itemID
+                                    left join itemTags it on it.itemID	= ian.itemID
+                                    left join tags t on t.tagID = it.tagID
+                                    where collectionID = {id}
+                                      and ian.text is not null)
+                        order by pageNum asc, position asc;
+                        """.format(id = self.id))
+        return [Item(result) for result in cur.fetchall()]
+
 class Item:
     id = 0
     text = None
@@ -22,7 +101,7 @@ class Item:
             self.id = t[0]
             self.text = t[1]
             self.comment = t[2]
-            self.tag = t[3]
+            self.tag = t[3] # TODO: change to Tag class
             self.rank = t[4]
             self.pageNum = t[5]
             self.position = float(json.loads(t[6])['rects'][0][1])
@@ -69,6 +148,19 @@ class Item:
                 self.text = '**{text}**'.format(text=self.text)
             except:
                 None
+
+
+def get_collections(collectionName: str = None) -> list:
+    with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""select collectionID,
+                        collectionName
+                from collections
+                    where parentCollectionID is null
+                      and lower(collectionName) like lower('%{col_name}%')
+                    order by collectionID;
+                    """.format(col_name = collectionName if collectionName else ''))
+    return [Collection(result) for result in cur.fetchall()]
 
 def get_items(parentItemName: str) -> list:
     with connect(db) as conn:
