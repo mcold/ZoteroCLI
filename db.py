@@ -2,6 +2,7 @@ from sqlite3 import connect
 from pathlib import Path
 from os import sep
 import json
+import re
 
 db = str(Path.home()) + sep + 'Zotero\\zotero.sqlite'
 
@@ -65,6 +66,11 @@ class Collection:
                         """.format(id = self.id))
         return [Attach(result) for result in cur.fetchall()]
 
+    def set_mnemo(self, d: dict):
+        if d.get(self.id): self.name = d.get(self.id)
+        for attach in self.attachs: attach.set_mnemo(d)
+
+
 class Attach:
 
     def __init__(self, t: tuple):
@@ -90,6 +96,7 @@ class Attach:
         res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
         res += '{name}\n\n'.format(name=self.name)
         if len(self.tags) > 0: res += '\n'.join(['`' + x + '`' for x in self.tags])
+        # res += '\nID: {id}\n\n'.format(id=self.id)
         res += ''.join([x.__repr__() for x in self.items])
         res += '</gingko-card>\n'
         return res
@@ -152,6 +159,35 @@ class Attach:
             l_res.extend(l_subitems)
         self.items = l_res
 
+    def set_mnemo(self, d: dict):
+        if d.get(self.id): self.name = d.get(self.id)
+        for item in self.items: item.set_mnemo(d)
+
+class Gingko:
+
+    def __init__(self, id: str, block: str):
+        self.id = id
+        self.block = block
+        self.childs = list()
+        self.tags = list()
+        
+    def __str__(self):
+        return 'id: {id}\n\n{block}\n'.format(id=self.id, block=self.block)
+
+    def __repr__(self) -> str:
+        res = '<gingko-card id="{id}">'.format(id=self.id)
+        # TODO: wrap each line in ``
+        res += '\n\n{block}\n\n'.format(block=self.block)
+        for tag in self.tags: res += '`#{tag}`\n'.format(tag=tag)
+        res += ''.join([x.__repr__() for x in self.childs])
+        res += '</gingko-card>\n'
+        return res
+
+    def get_mnemo(self, d: dict) -> dict:
+        d[self.id] = self.block.split('\n')[0].strip().strip('*')
+        for child in self.childs: d = child.get_mnemo(d)
+        return d
+
 class Item:
     
     def __init__(self, t: tuple):
@@ -187,6 +223,7 @@ class Item:
         if self.comment: res += '{comment}\n'.format(comment=self.comment)
         res += '\n'
         if len(self.tags) > 0: res += '\n'.join(['`' + x + '`' for x in self.tags])
+        # res += '\nID: {id}\n\n'.format(id=self.id)
         res += ''.join([x.__repr__() for x in self.childs])
         res += '</gingko-card>\n'
         return res
@@ -199,6 +236,10 @@ class Item:
                 self.text = '**{text}**'.format(text=self.text)
             except:
                 None
+
+    def set_mnemo(self, d: dict):
+        if d.get(self.id): self.name = d.get(self.id)
+        for child in self.childs: child.set_mnemo(d)
 
 def get_collections(collectionName: str = None) -> list:
     with connect(db) as conn:
