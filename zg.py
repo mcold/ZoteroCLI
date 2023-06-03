@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Item, get_items
+from db import Item, get_items, get_collections
 from pathlib import Path
 import typer
 import re
@@ -8,15 +8,6 @@ import os
 file_path = str(Path.home()) + os.sep + 'WD\\Gingko\\Mnemo'
 
 app = typer.Typer()
-
-def relink_items(items: list) -> list:
-    l_del_items = list()
-    for i in range(len(items)):
-        for j in range(i+1, len(items)):
-            if '.'.join(items[j].nums).startswith('.'.join(items[i].nums)) and len(items[j].nums) - 1 == len(items[i].nums): 
-                items[i].childs.append(items[j])
-                l_del_items.append(items[j])
-    return [x for x in items if x not in l_del_items]
 
 def add_to_higher(d: dict, item: Item, l_del_items: list) -> dict:
     for r in range(item.rank-1, 0, -1):
@@ -74,5 +65,26 @@ def gen_md_attach_file(file_name: str) -> None:
             for attach in f_from.readlines(): res += ''.join([x.__repr__() for x in get_tree(parentItemName=attach.strip(),to_use_parent=True)]) + '\n'
             f.write(res.strip())
 
+@app.command(help='Collections')
+def get_cols() -> None:
+    l_col = get_collections(collectionName='PG')
+    for col in l_col:
+        print(col.__repr__())
+
+@app.command(help='Generate collection by name')
+def gen_col(col_name: str) -> None:
+    with open(file=file_path + os.sep + col_name + '.md', mode='w', encoding='utf-8') as f: 
+        f.write(get_collections(collectionName=col_name)[0].__repr__())
+
+@app.command(help='Generate all collections')
+def gen_cols() -> None:
+    """
+    Generate all collections
+    """
+    for col in get_collections():
+        if col.exists_annotation():
+            with open(file=file_path + os.sep + col.name + '.md', mode='w', encoding='utf-8') as f: 
+                f.write(col.__repr__())
+    
 if __name__ == "__main__":
     app()
