@@ -101,6 +101,7 @@ def gen_cols() -> None:
     """
     for col in get_collections():
         if col.exists_annotation():
+            col.set_bold()
             with open(file=file_path + os.sep + col.name + '.md', mode='w', encoding='utf-8') as f: 
                 f.write(col.__repr__())
 

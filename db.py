@@ -12,6 +12,8 @@ id_num = 0
 
 class Collection:
 
+    attachs = list()
+
     def __init__(self, t: tuple):
         if len(t) > 0:
             self.id = t[0]
@@ -62,9 +64,16 @@ class Collection:
                              from collectionItems ci
                              join items i on i.itemID = ci.itemID
                              join itemAttachments ia on ia.parentItemID = i.itemID
-                            where collectionID = {id};
+                            where collectionID = {id}
+                              and ia.path is not null;
                         """.format(id = self.id))
         return [Attach(result) for result in cur.fetchall()]
+
+    def set_bold(self):
+        for attach in self.attachs:
+            for item in attach.items:
+                if item.rank in [1, 2]:
+                    item.name = '*' + item.name.strip('*') + '*'
 
     def set_mnemo(self, d: dict):
         if d.get(self.id): self.name = d.get(self.id)
@@ -72,6 +81,10 @@ class Collection:
 
 
 class Attach:
+
+    name = ''
+    items = list()
+    tags = list()
 
     def __init__(self, t: tuple):
         if len(t) > 0:
@@ -190,6 +203,8 @@ class Gingko:
 
 class Item:
     
+    name = ''
+
     def __init__(self, t: tuple):
         global id_num
         if len(t) > 0:
