@@ -85,7 +85,7 @@ def gen_md_attach_file(file_name: str) -> None:
 
 @app.command(help='Collections')
 def get_cols() -> None:
-    l_col = get_collections(collectionName='PG')
+    l_col = get_collections()
     for col in l_col:
         print(col.__repr__())
 

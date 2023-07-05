@@ -64,8 +64,11 @@ class Collection:
                              from collectionItems ci
                              join items i on i.itemID = ci.itemID
                              join itemAttachments ia on ia.parentItemID = i.itemID
+                        left join itemData idat on idat.itemID = i.itemID and idat.fieldID = 16
+                        left join itemDataValues ival on ival.valueID = idat.valueID
                             where collectionID = {id}
-                              and ia.path is not null;
+                              and ia.path is not null
+                              and ival.valueID is null;
                         """.format(id = self.id))
         return [Attach(result) for result in cur.fetchall()]
 
@@ -189,7 +192,6 @@ class Gingko:
 
     def __repr__(self) -> str:
         res = '<gingko-card id="{id}">'.format(id=self.id)
-        # TODO: wrap each line in ``
         res += '\n\n{block}\n\n'.format(block=self.block)
         for tag in self.tags: res += '`#{tag}`\n'.format(tag=tag)
         res += ''.join([x.__repr__() for x in self.childs])
@@ -217,6 +219,7 @@ class Item:
             self.childs = list()
             self.tags = get_tags(id = self.id)
             self.get_is_numbered()
+            self.get_extra()
         else:
             id_num = id_num + 1
             self.id = id_num
@@ -238,7 +241,6 @@ class Item:
         if self.comment: res += '{comment}\n'.format(comment=self.comment)
         res += '\n'
         if len(self.tags) > 0: res += '\n'.join(['`' + x + '`' for x in self.tags])
-        # res += '\nID: {id}\n\n'.format(id=self.id)
         res += ''.join([x.__repr__() for x in self.childs])
         res += '</gingko-card>\n'
         return res
@@ -255,6 +257,19 @@ class Item:
     def set_mnemo(self, d: dict):
         if d.get(self.id): self.name = d.get(self.id)
         for child in self.childs: child.set_mnemo(d)
+
+    def get_extra(self) -> int:
+        with connect(db) as conn:
+            cur = conn.cursor()
+            cur.execute("""select ia.itemID,
+                                  ia.path,
+                                  ia.contentType
+                             from itemDataValues ival
+                             join itemData idat on idat.valueID = ival.valueID and idat.fieldID = 16
+                             left join itemAttachments ia on ia.parentItemID = idat.itemID
+                           where  ival.value = '{id}'
+                        """.format(id = self.id))
+        for att in [Attach(result) for result in cur.fetchall()]: self.childs.extend(att.items)
 
 def get_collections(collectionName: str = None) -> list:
     with connect(db) as conn:
