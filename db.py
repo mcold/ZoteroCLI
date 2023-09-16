@@ -2,7 +2,6 @@ from sqlite3 import connect
 from pathlib import Path
 from os import sep
 import json
-import re
 
 db = str(Path.home()) + sep + 'Zotero\\zotero.sqlite'
 
@@ -31,12 +30,16 @@ class Collection:
     def __str__(self) -> str:
         return 'id: {id}\nname: {name}\nparentId: {parentId}\n'.format(id=str(self.id), name=self.name, parentId=self.parentId)
 
+    def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        res = '\t'*n_tabs + self.name.strip('*') + '\n'
+        for child in self.childs: 
+            res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        for attach in self.attachs:
+            res += attach.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
+
     def __repr__(self) -> str:
-        # res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
-        # res += '{name}\n\n'.format(name=self.name)
-        # res = ''.join([x.__repr__() for x in self.childs])
         res = ''.join([x.__repr__() for x in self.attachs if len(x.items) > 0])
-        # res += '</gingko-card>\n'
         return res
 
     def exists_annotation(self) -> bool:
@@ -107,15 +110,37 @@ class Attach:
 
     def __str__(self) -> str:
         return 'id: {id}\nname: {name}\ntype: {type}\n'.format(id=str(self.id), name=self.name, type=self.type)
+    
+    def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        res = '\t'*n_tabs + self.name.strip('*') + '\n'
+        for item in self.items:
+            if item.rank < lvl_limit:
+                res += item.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
 
     def __repr__(self) -> str:
         res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
         res += '{name}\n\n'.format(name=self.name)
         if len(self.tags) > 0: res += '\n'.join(['`' + x + '`' for x in self.tags])
-        # res += '\nID: {id}\n\n'.format(id=self.id)
         res += ''.join([x.__repr__() for x in self.items])
         res += '</gingko-card>\n'
         return res
+    
+
+    def find_child(self, name: str):
+        """
+        Find item by name
+        """
+        res = None
+        for item in self.items:
+            if item.text.strip().lower().find(name.strip().lower()) > -1:
+                return item
+            else:
+                res = item.find_child(name=name)
+                if res is not None:
+                    return res
+        return res
+
 
     def get_items(self):
         with connect(db) as conn:
@@ -235,6 +260,15 @@ class Item:
     def __str__(self) -> str:
         return 'id: {id}\ntext: {text}\ncomment: {comment}\ntags: {tags}\n'.format(id=str(self.id), text=self.text, comment=self.comment, tags='\n'.join(self.tags))
 
+
+    def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        res = '\t' * n_tabs + self.text.strip('*') + '\n'
+        for child in self.childs:
+            if child.rank < lvl_limit:
+                res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
+
+
     def __repr__(self) -> str:
         res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
         res += '{text}\n'.format(text=self.text)
@@ -243,6 +277,20 @@ class Item:
         if len(self.tags) > 0: res += '\n'.join(['`' + x + '`' for x in self.tags])
         res += ''.join([x.__repr__() for x in self.childs])
         res += '</gingko-card>\n'
+        return res
+    
+    def find_child(self, name: str):
+        """
+        Find item by name
+        """
+        res = None
+        for child in self.childs:
+            if child.text.strip().lower().find(name.strip().lower()) > -1:
+                return child
+            else:
+                res = child.find_child(name=name)
+                if res is not None:
+                    return res
         return res
 
     def get_is_numbered(self) -> None:
@@ -283,6 +331,26 @@ def get_collections(collectionName: str = None) -> list:
                         order by collectionID;
                     """.format(col_name = collectionName if collectionName else ''))
     return [Collection(result) for result in cur.fetchall()]
+
+
+def get_attach(attach_name: str) -> Attach:
+    with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""select ia.itemID,
+                              ia.path,
+                              ia.contentType
+                        from collectionItems ci
+                        join items i on i.itemID = ci.itemID
+                        join itemAttachments ia on ia.parentItemID = i.itemID
+                left join itemData idat on idat.itemID = i.itemID and idat.fieldID = 16
+                left join itemDataValues ival on ival.valueID = idat.valueID
+                    where lower(path) like lower('%{name}%')
+                        and ia.path is not null
+                        and ival.valueID is null
+                    limit 1;
+                    """.format(name = attach_name))
+    return Attach(cur.fetchone())
+
 
 def get_items(parentItemName: str) -> list:
     with connect(db) as conn:
@@ -332,3 +400,45 @@ def get_tags(id: int) -> list:
                         order by t.name;
                     """.format(id=id))
         return [x[0] for x in cur.fetchall()]
+     
+def get_childs_item(id: int) -> list:
+     with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""with t_tab as (select ia.itemID as ID,
+										 ia.text,
+										 ia.comment,
+										 case color
+												when '#ffd400' then 1
+													when '#ff6666' then 2
+													when '#5fb236' then 3
+													when '#2ea8e5' then 4
+													when '#a28ae5' then 5
+													when '#e56eee' then 6
+													when '#f19837' then 7
+													when '#aaaaaa' then 8
+												end as rank,
+											cast(ia.pageLabel as decimal) as pageNum,
+											position,
+											row_number() over(order by cast(ia.pageLabel as decimal)) rn
+									from itemAnnotations ia
+									where ia.itemID >= {id}),
+                                t_cur as (select *
+                                            from t_tab
+                                           where id = {id}),
+                                t_next as (select id, text, comment, rank, pageNum, position, rn
+                                            from (select row_number() over(order by t.pageNum, t.rank) as rownum,
+                                                        t.*
+                                                    from t_tab t
+                                                    join t_cur c on c.rank = t.rank and t.pageNum >= c.pageNum and t.ID != c.ID)
+                                                    where rownum = 1),
+                                t_dif as (select id, text, comment, rank, pageNum, position
+                                            from t_tab t
+                                           where rn > (select rn from t_cur)
+                                             and rn < (select rn from t_next))
+                        select *
+                        from t_dif;
+                    """.format(id=id))
+        l_items = [Item(result) for result in cur.fetchall()]
+
+
+        return l_items

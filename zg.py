@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Collection, Gingko, Item, get_items, get_collections
+from db import Collection, Gingko, Item, get_items, get_collections, get_attach
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import typer
@@ -8,6 +8,8 @@ import os
 
 file_path = str(Path.home()) + os.sep + 'WD\\Gingko\\Mnemo'
 mnemo_postfix = '_MN'
+
+xmind_limit_rank = 8
 
 app = typer.Typer()
 
@@ -96,9 +98,6 @@ def gen_col(col_name: str) -> None:
 
 @app.command(help='Generate all collections')
 def gen_cols() -> None:
-    """
-    Generate all collections
-    """
     for col in get_collections():
         if col.exists_annotation():
             col.set_bold()
@@ -106,7 +105,7 @@ def gen_cols() -> None:
                 f.write(col.__repr__())
 
 @app.command(help='Generate mnemo version of collection')
-def gen_mnemo(col_name: str):
+def gen_mnemo(col_name: str) -> None:
     col = get_collections(collectionName=col_name)[0]
     d = dict()
     f_name = file_path + os.sep + col.name + mnemo_postfix + '.md'
@@ -117,6 +116,26 @@ def gen_mnemo(col_name: str):
     col.name = col.name + mnemo_postfix
     with open(file=file_path + os.sep + col.name + '.md', mode='w', encoding='utf-8') as f: 
         f.write(col.__repr__())
+
+@app.command(help='Generate collection in tabs tree for xmind')
+def gen_col_xmind(col_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+    col = get_collections(collectionName=col_name)[0]
+    with open(col_name + '.txt', 'w', encoding='utf-8') as f:
+        f.write(col.__str_tabs__(lvl_limit = lvl_limit))
+
+@app.command(help='Generate attach in tabs tree for xmind')
+def gen_attach_xmind(attach_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+    attach = get_attach(attach_name=attach_name)
+    with open(attach_name + '.txt', 'w', encoding='utf-8') as f:
+        f.write(attach.__str_tabs__(lvl_limit = lvl_limit))
+
+@app.command(help='Generate topic in tabs tree for xmind')
+def gen_topic_xmind(attach_name: str, topic_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+    attach = get_attach(attach_name=attach_name)
+    topic = attach.find_child(name = topic_name)
+    if topic:
+        with open(topic_name + '.txt', 'w', encoding='utf-8') as f:
+            f.write(topic.__str_tabs__(lvl_limit = lvl_limit))
 
 if __name__ == "__main__":
     app()
