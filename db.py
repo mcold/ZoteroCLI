@@ -6,6 +6,8 @@ import json
 db = str(Path.home()) + sep + 'Zotero\\zotero.sqlite'
 
 id_num = 0
+g_zot_start = 'zotero://open-pdf/library/items/'
+g_link_title = 'Go to Zotero'
 
 # TODO: move connection object to zg
 
@@ -31,11 +33,21 @@ class Collection:
         return 'id: {id}\nname: {name}\nparentId: {parentId}\n'.format(id=str(self.id), name=self.name, parentId=self.parentId)
 
     def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
-        res = '\t'*n_tabs + self.name.strip('*') + '\n'
+        starter = '\t'
+        res = starter*n_tabs + self.name.strip('*') + '\n'
         for child in self.childs: 
             res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         for attach in self.attachs:
             res += attach.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
+    
+    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        starter = '#'
+        res = starter*n_tabs + ' ' + self.name.strip('*') + '\n'
+        for child in self.childs: 
+            res += child.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        for attach in self.attachs:
+            res += attach.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
 
     def __repr__(self) -> str:
@@ -63,7 +75,8 @@ class Collection:
             cur = conn.cursor()
             cur.execute("""select ia.itemID,
                                   ia.path,
-                                  ia.contentType
+                                  ia.contentType,
+                                  i.key
                              from collectionItems ci
                              join items i on i.itemID = ci.itemID
                              join itemAttachments ia on ia.parentItemID = i.itemID
@@ -89,6 +102,7 @@ class Collection:
 class Attach:
 
     name = ''
+    key = ''
     items = list()
     tags = list()
 
@@ -97,10 +111,12 @@ class Attach:
             self.id = t[0]
             self.name = t[1].rpartition(':')[-1]
             self.type = t[2]
+            self.key = t[3]
             self.items = self.get_items()
             self.tags = get_tags(id = self.id)
             self.resort()
             self.relink_items_rank()
+            self.reset_attach_key()
         else:
             self.id = None
             self.name = None
@@ -112,10 +128,19 @@ class Attach:
         return 'id: {id}\nname: {name}\ntype: {type}\n'.format(id=str(self.id), name=self.name, type=self.type)
     
     def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
-        res = '\t'*n_tabs + self.name.strip('*') + '\n'
+        starter = '\t'
+        res = starter*n_tabs + self.name.strip('*') + '\n'
         for item in self.items:
             if item.rank < lvl_limit:
                 res += item.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
+    
+    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        starter = '#'
+        res = starter*n_tabs + ' ' + self.name.strip('*') + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        for item in self.items:
+            if item.rank < lvl_limit:
+                res += item.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
 
     def __repr__(self) -> str:
@@ -150,7 +175,8 @@ class Attach:
                                   comment, 
                                   rank, 
                                   pageNum,
-                                  position
+                                  position,
+                                  key
                             from (select ian.itemID as ID,
                                          ian.text,
                                          ian.comment,
@@ -165,9 +191,11 @@ class Attach:
                                            when '#aaaaaa' then 8
                                          end as rank,
                                          cast(ian.pageLabel as decimal) as pageNum,
-                                         position
+                                         position,
+                                         i.key
                                     from itemAttachments ia
                                     join itemAnnotations ian on ian.parentItemID = ia.itemID
+                                    join items i on i.itemID = ian.itemID
                                     where ia.itemID = {id}
                                       and ian.text is not null)
                         order by pageNum asc, position asc;
@@ -186,12 +214,21 @@ class Attach:
         for r in range(item.rank, 9): d.pop(r, None)
         d[item.rank] = item
         return d
+    
+    def get_zotero_link(self):
+        global g_zot_start
+        return g_zot_start + self.key
 
     def relink_items_rank(self):
         d = dict()
         l_del_items = list()
         for item in self.items: self.add_to_higher(d = d, item = item, l_del_items = l_del_items)
         self.items = [x for x in self.items if x not in l_del_items]
+
+    def reset_attach_key(self):
+        for item in self.items:
+            item.attach_key = self.key
+            item.reset_attach_key()
 
     def resort(self):
         l_res = list()
@@ -204,6 +241,7 @@ class Attach:
         if d.get(self.id): self.name = d.get(self.id)
         for item in self.items: item.set_mnemo(d)
 
+    
 class Gingko:
 
     def __init__(self, id: str, block: str):
@@ -230,6 +268,7 @@ class Gingko:
 
 class Item:
     
+    attach_key = ''
     name = ''
 
     def __init__(self, t: tuple):
@@ -241,10 +280,12 @@ class Item:
             self.rank = t[3]
             self.pageNum = t[4]
             self.position = float(json.loads(t[5])['rects'][0][1])
+            self.key = t[6]
             self.childs = list()
             self.tags = get_tags(id = self.id)
             self.get_is_numbered()
             self.get_extra()
+
         else:
             id_num = id_num + 1
             self.id = id_num
@@ -262,12 +303,23 @@ class Item:
 
 
     def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
-        res = '\t' * n_tabs + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
+        starter = '\t'
+        res = starter * n_tabs + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
         if self.comment:
-            res += '\t' * (n_tabs + 1) + self.comment.strip() + '\n'
+            res += starter * (n_tabs + 1) + self.comment.strip() + '\n'
         for child in self.childs:
             if child.rank < lvl_limit:
                 res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+        return res
+
+    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+        starter = '#'
+        res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        if self.comment:
+            res += starter * (n_tabs + 1) + ' ' + self.comment.strip() + '\n'
+        for child in self.childs:
+            if child.rank < lvl_limit:
+                res += child.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
 
 
@@ -303,6 +355,18 @@ class Item:
                 self.text = '**{text}**'.format(text=self.text)
             except:
                 None
+    
+    def get_zotero_link(self):
+        global g_zot_start
+        return '{zot_start}/{attach_key}?page={page_num}&annotation={item_key}'.format(zot_start=g_zot_start, 
+                                                                                       attach_key=self.attach_key, 
+                                                                                       page_num = self.pageNum,
+                                                                                       item_key=self.key)
+
+    def reset_attach_key(self):
+        for child in self.childs:
+            child.attach_key = self.attach_key
+            child.reset_attach_key()
 
     def set_mnemo(self, d: dict):
         if d.get(self.id): self.name = d.get(self.id)
@@ -313,10 +377,12 @@ class Item:
             cur = conn.cursor()
             cur.execute("""select ia.itemID,
                                   ia.path,
-                                  ia.contentType
+                                  ia.contentType,
+                                  i.key
                              from itemDataValues ival
                              join itemData idat on idat.valueID = ival.valueID and idat.fieldID = 16
                              left join itemAttachments ia on ia.parentItemID = idat.itemID
+                             left join items i on i.itemID = ia.itemID
                            where  ival.value = '{id}'
                         """.format(id = self.id))
         for att in [Attach(result) for result in cur.fetchall()]: self.childs.extend(att.items)
@@ -340,7 +406,12 @@ def get_attach(attach_name: str) -> Attach:
         cur = conn.cursor()
         cur.execute("""select ia.itemID,
                               ia.path,
-                              ia.contentType
+                              ia.contentType,
+                              (select i.key
+                                from itemAttachments ia
+                                join items i on i.itemID = ia.itemID
+                            where lower(ia.path) like lower('%{name}%')
+                            limit 1)
                         from collectionItems ci
                         join items i on i.itemID = ci.itemID
                         join itemAttachments ia on ia.parentItemID = i.itemID
@@ -362,13 +433,13 @@ def get_items(parentItemName: str) -> list:
                                comment, 
                                rank, 
                                pageNum,
-                               position
+                               position,
+                               key
                             from
                                 (
                                     select ia.itemID as ID,
                                     ia.text,
                                     ia.comment,
-                                    t.name as tag,
                                     case color
                                         when '#ffd400' then 1
                                             when '#ff6666' then 2
@@ -380,7 +451,8 @@ def get_items(parentItemName: str) -> list:
                                             when '#aaaaaa' then 8
                                         end as rank,
                                     cast(ia.pageLabel as decimal) as pageNum,
-                                    position
+                                    position,
+                                    i.key
                                 from itemAnnotations ia
                                 left join items i on i.itemID = ia.itemID
                                 where ia.parentItemID = (select itemID

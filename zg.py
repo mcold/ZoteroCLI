@@ -71,11 +71,13 @@ def get_gingko_child(gingko_xml: ET.Element) -> Gingko:
 
 ######################
 
+# TODO: check - if doesn't work -> delete
 @app.command(help='Generate markdown by attachment name')
 def gen_md_attach(attach_name: str) -> None:
     with open(file=file_path + os.sep + attach_name + '.md', mode='w', encoding='utf-8') as f: 
         f.write(''.join([x.__repr__() for x in get_tree(parentItemName=attach_name)]))
 
+# TODO: check - if doesn't work -> delete
 @app.command(help='Generate markdown by attachment names from file')
 def gen_md_attach_file(file_name: str) -> None:
     res = ''
@@ -136,6 +138,27 @@ def gen_topic_xmind(attach_name: str, topic_name: str, lvl_limit: int = xmind_li
     if topic:
         with open(topic_name + '.txt', 'w', encoding='utf-8') as f:
             f.write(topic.__str_tabs__(lvl_limit = lvl_limit))
+
+@app.command(help='Generate attach in markdown')
+def gen_attach_md(attach_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+    attach = get_attach(attach_name=attach_name)
+    with open(attach_name + '.txt', 'w', encoding='utf-8') as f:
+        f.write(attach.__str_md__(lvl_limit = lvl_limit))
+
+@app.command(help='Generate collection in markdown')
+def gen_col_md(col_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+    col = get_collections(collectionName=col_name)[0]
+    with open(col_name + '.txt', 'w', encoding='utf-8') as f:
+        f.write(col.__str_md__(lvl_limit = lvl_limit))
+
+# TODO
+# @app.command(help='Generate topic in tabs tree for xmind')
+# def gen_topic_xmind(attach_name: str, topic_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+#     attach = get_attach(attach_name=attach_name)
+#     topic = attach.find_child(name = topic_name)
+#     if topic:
+#         with open(topic_name + '.txt', 'w', encoding='utf-8') as f:
+#             f.write(topic.__str_tabs__(lvl_limit = lvl_limit))
 
 if __name__ == "__main__":
     app()
