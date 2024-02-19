@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Collection, Gingko, Item, get_items, get_collections, get_attach
+from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import typer
@@ -139,26 +139,25 @@ def gen_topic_xmind(attach_name: str, topic_name: str, lvl_limit: int = xmind_li
         with open(topic_name + '.txt', 'w', encoding='utf-8') as f:
             f.write(topic.__str_tabs__(lvl_limit = lvl_limit))
 
-@app.command(help='Generate attach in markdown')
-def gen_attach_md(attach_name: str, lvl_limit: int = xmind_limit_rank) -> None:
-    attach = get_attach(attach_name=attach_name)
-    with open(attach_name + '.txt', 'w', encoding='utf-8') as f:
-        f.write(attach.__str_md__(lvl_limit = lvl_limit))
-
 @app.command(help='Generate collection in markdown')
-def gen_col_md(col_name: str, lvl_limit: int = xmind_limit_rank) -> None:
+def gen_col_md(col_name: str) -> None:
     col = get_collections(collectionName=col_name)[0]
     with open(col_name + '.txt', 'w', encoding='utf-8') as f:
-        f.write(col.__str_md__(lvl_limit = lvl_limit))
+        f.write(col.__str_md__())
 
-# TODO
-# @app.command(help='Generate topic in tabs tree for xmind')
-# def gen_topic_xmind(attach_name: str, topic_name: str, lvl_limit: int = xmind_limit_rank) -> None:
-#     attach = get_attach(attach_name=attach_name)
-#     topic = attach.find_child(name = topic_name)
-#     if topic:
-#         with open(topic_name + '.txt', 'w', encoding='utf-8') as f:
-#             f.write(topic.__str_tabs__(lvl_limit = lvl_limit))
+@app.command(help='Generate attach in markdown')
+def gen_attach_md(attach_name: str) -> None:
+    attach = get_attach(attach_name=attach_name)
+    with open(attach_name + '.txt', 'w', encoding='utf-8') as f:
+        f.write(attach.__str_md__())
+
+@app.command(help='Generate item in markdown')
+def gen_item_md(attach_key: str, item_key: str) -> None:
+    attach = get_attach_by_key(attach_key=attach_key)
+    topic = attach.find_child_by_key(item_key=item_key)
+    if topic:
+        with open(topic.text + '.md', 'w', encoding='utf-8') as f:
+            f.write(topic.__str_md__())
 
 if __name__ == "__main__":
     app()

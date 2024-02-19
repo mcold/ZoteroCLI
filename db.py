@@ -7,7 +7,7 @@ db = str(Path.home()) + sep + 'Zotero\\zotero.sqlite'
 
 id_num = 0
 g_zot_start = 'zotero://open-pdf/library/items/'
-g_link_title = 'Go to Zotero'
+g_link_title = 'zot'
 
 # TODO: move connection object to zg
 
@@ -41,13 +41,13 @@ class Collection:
             res += attach.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
     
-    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+    def __str_md__(self, n_tabs: int = 0):
         starter = '#'
         res = starter*n_tabs + ' ' + self.name.strip('*') + '\n'
         for child in self.childs: 
-            res += child.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+            res += child.__str_md__(n_tabs = n_tabs + 1)
         for attach in self.attachs:
-            res += attach.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+            res += attach.__str_md__(n_tabs = n_tabs + 1)
         return res
 
     def __repr__(self) -> str:
@@ -135,12 +135,11 @@ class Attach:
                 res += item.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
     
-    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+    def __str_md__(self, n_tabs: int = 0):
         starter = '#'
         res = starter*n_tabs + ' ' + self.name.strip('*') + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         for item in self.items:
-            if item.rank < lvl_limit:
-                res += item.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+            res += item.__str_md__(n_tabs = n_tabs + 1)
         return res
 
     def __repr__(self) -> str:
@@ -150,7 +149,7 @@ class Attach:
         res += ''.join([x.__repr__() for x in self.items])
         res += '</gingko-card>\n'
         return res
-    
+
 
     def find_child(self, name: str):
         """
@@ -162,6 +161,20 @@ class Attach:
                 return item
             else:
                 res = item.find_child(name=name)
+                if res is not None:
+                    return res
+        return res
+
+    def find_child_by_key(self, item_key: str):
+        """
+        Find item by item key
+        """
+        res = None
+        for item in self.items:
+            if item.key.strip().lower().find(item_key.strip().lower()) > -1:
+                return item
+            else:
+                res = item.find_child_by_key(item_key=item_key)
                 if res is not None:
                     return res
         return res
@@ -312,16 +325,20 @@ class Item:
                 res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
         return res
 
-    def __str_md__(self, n_tabs: int = 0, lvl_limit: int = 0):
+    def __str_md__(self, n_tabs: int = 0):
         starter = '#'
-        res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        if self.rank < 4 or len(self.childs) == 0:
+            res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        else:
+            res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         if self.comment:
-            res += starter * (n_tabs + 1) + ' ' + self.comment.strip() + '\n'
+            if self.rank < 4 or len(self.childs) == 0:
+                res += starter * (n_tabs + 1) + ' ' + self.comment.strip() + '\n'
+            else:
+                res += self.comment.strip() + '\n'
         for child in self.childs:
-            if child.rank < lvl_limit:
-                res += child.__str_md__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
+            res += child.__str_md__(n_tabs = n_tabs + 1)
         return res
-
 
     def __repr__(self) -> str:
         res = '<gingko-card id="{id}">\n\n'.format(id=self.id)
@@ -343,6 +360,20 @@ class Item:
                 return child
             else:
                 res = child.find_child(name=name)
+                if res is not None:
+                    return res
+        return res
+    
+    def find_child_by_key(self, item_key: str):
+        """
+        Find item by key
+        """
+        res = None
+        for child in self.childs:
+            if child.key.strip().lower().find(item_key.strip().lower()) > -1:
+                return child
+            else:
+                res = child.find_child_by_key(item_key=item_key)
                 if res is not None:
                     return res
         return res
@@ -422,6 +453,19 @@ def get_attach(attach_name: str) -> Attach:
                         and ival.valueID is null
                     limit 1;
                     """.format(name = attach_name))
+    return Attach(cur.fetchone())
+
+def get_attach_by_key(attach_key: str) -> Attach:
+    with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""select ia.itemID,
+                              ia.path,
+                              ia.contentType,
+                              i.key
+                         from itemAttachments ia
+                         join items i on i.itemID = ia.itemID
+                        where i.key = '{item_key}'
+                    """.format(item_key=attach_key))
     return Attach(cur.fetchone())
 
 
