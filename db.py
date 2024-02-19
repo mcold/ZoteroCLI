@@ -205,7 +205,8 @@ class Attach:
                                   rank, 
                                   pageNum,
                                   position,
-                                  key
+                                  key,
+                                  type
                             from (select ian.itemID as ID,
                                          ian.text,
                                          ian.comment,
@@ -221,12 +222,12 @@ class Attach:
                                          end as rank,
                                          cast(ian.pageLabel as decimal) as pageNum,
                                          position,
-                                         i.key
+                                         i.key,
+                                         ian.type
                                     from itemAttachments ia
                                     join itemAnnotations ian on ian.parentItemID = ia.itemID
                                     join items i on i.itemID = ian.itemID
-                                    where ia.itemID = {id}
-                                      and ian.text is not null)
+                                    where ia.itemID = {id})
                         order by pageNum asc, position asc;
                         """.format(id = self.id))
         return [Item(result) for result in cur.fetchall()]
@@ -310,6 +311,7 @@ class Item:
             self.pageNum = t[4]
             self.position = float(json.loads(t[5])['rects'][0][1])
             self.key = t[6]
+            self.type = t[7]
             self.childs = list()
             self.tags = get_tags(id = self.id)
             self.get_is_numbered()
@@ -323,6 +325,8 @@ class Item:
             self.rank = None
             self.pageNum = None
             self.position = None
+            self.key = None
+            self.type = None
             self.childs = list()
             self.tags = list()
             self.get_is_numbered()
@@ -333,9 +337,18 @@ class Item:
 
     def __str_tabs__(self, n_tabs: int = 0, lvl_limit: int = 0):
         starter = '\t'
-        res = starter * n_tabs + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
+        # pictures
+        if self.type != 3:
+            if len(self.childs) > 0:
+                res = starter * n_tabs + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
+            else:
+                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
+        else:
+            res = '> [!todo] #make_pict' + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         if self.comment:
             res += starter * (n_tabs + 1) + self.comment.strip() + '\n'
+        if self.type == 3:
+            res += '\n> [!todo] #pict\n'
         for child in self.childs:
             if child.rank < lvl_limit:
                 res += child.__str_tabs__(n_tabs = n_tabs + 1, lvl_limit = lvl_limit)
@@ -343,15 +356,19 @@ class Item:
 
     def __str_md__(self, n_tabs: int = 0):
         starter = '#'
-        if self.rank < 4 or len(self.childs) == 0:
-            res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
-        else:
-            res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
-        if self.comment:
+        # pictures
+        if self.type != 3:
             if self.rank < 4 or len(self.childs) == 0:
-                res += starter * (n_tabs + 1) + ' ' + self.comment.strip() + '\n'
+                if len(self.childs) > 0:
+                    res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+                else:
+                    res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
             else:
-                res += self.comment.strip() + '\n'
+                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        else:
+            res = '> [!todo] #make_pict' + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        if self.comment:
+            res += self.comment.strip() + '\n'
         for child in self.childs:
             res += child.__str_md__(n_tabs = n_tabs + 1)
         return res
@@ -434,6 +451,22 @@ class Item:
                         """.format(id = self.id))
         for att in [Attach(result) for result in cur.fetchall()]: self.childs.extend(att.items)
 
+
+class Object:
+
+    def __init__(self, t: tuple):
+
+        if len(t) > 0:
+            self.key = t[0]
+            self.type = t[1]
+            self.name = t[2]
+        else:
+            self.key = None
+            self.type = None
+            self.name = None
+
+
+
 def get_collections(collectionName: str = None) -> list:
     with connect(db) as conn:
         cur = conn.cursor()
@@ -494,7 +527,8 @@ def get_items(parentItemName: str) -> list:
                                rank, 
                                pageNum,
                                position,
-                               key
+                               key,
+                               type
                             from
                                 (
                                     select ia.itemID as ID,
@@ -512,13 +546,13 @@ def get_items(parentItemName: str) -> list:
                                         end as rank,
                                     cast(ia.pageLabel as decimal) as pageNum,
                                     position,
-                                    i.key
+                                    i.key,
+                                    ia.type
                                 from itemAnnotations ia
                                 left join items i on i.itemID = ia.itemID
                                 where ia.parentItemID = (select itemID
                                                             from itemAttachments
                                                         where lower(path) like lower('%{book_name}%'))
-                                and ia.text is not null
                                 )
                          order by pageNum asc, position asc;
                     """.format(book_name = parentItemName))
@@ -553,7 +587,8 @@ def get_childs_item(id: int) -> list:
 												end as rank,
 											cast(ia.pageLabel as decimal) as pageNum,
 											position,
-											row_number() over(order by cast(ia.pageLabel as decimal)) rn
+											row_number() over(order by cast(ia.pageLabel as decimal)) rn,
+                                            ia.type    
 									from itemAnnotations ia
 									where ia.itemID >= {id}),
                                 t_cur as (select *
@@ -572,5 +607,58 @@ def get_childs_item(id: int) -> list:
                         select *
                         from t_dif;
                     """.format(id=id))
-        l_items = [Item(result) for result in cur.fetchall()]
-        return l_items
+        return [Item(result) for result in cur.fetchall()]
+
+def get_col_key(col_name: str) -> list:
+     with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+                    select i.key
+                        from collectionItems ci
+                        join items i on i.itemID = ci.itemID
+                        join collections c on c.collectionID = ci.collectionID
+                        where lower(collectionName) like lower('%' || '{col_name}' || '%')
+            """.format(col_name=col_name))
+        return [t[0] for t in cur.fetchall()]
+     
+
+def get_attach_key(attach_name: str) -> list:
+     with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+                    select i.key
+                    from itemAttachments ia
+                    join items i on i.itemID = ia.itemID
+                where lower(ia.path) like lower('%{attach_name}%') 
+            """.format(attach_name=attach_name))
+        return [t[0] for t in cur.fetchall()]
+
+def get_item_key(attach_key: str, item_name: str) -> list:
+     with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""
+                    select i.key
+                    from itemAttachments ia
+                    join itemAnnotations ian on ian.parentItemID = ia.itemID
+                    join items i on i.itemID = ian.itemID
+                    join items i2 on i2.itemID = ia.itemID and i2.key = '{attach_key}'
+                    where lower(ian.text) like lower('%' || '{item_name}' || '%'); 
+            """.format(attach_key=attach_key, item_name=item_name))
+        return [t[0] for t in cur.fetchall()]
+
+
+# def get_obj_by_key(key: str) -> list:
+#         with connect(db) as conn:
+#             cur = conn.cursor()
+#             cur.execute("""
+#                         select i.key
+#                         from itemAttachments ia
+#                         join itemAnnotations ian on ian.parentItemID = ia.itemID
+#                         join items i on i.itemID = ian.itemID
+#                         join items i2 on i2.itemID = ia.itemID and i2.key = '{attach_key}'
+#                         where lower(ian.text) like lower('%' || '{item_name}' || '%'); 
+#                 """.format(attach_key=attach_key, item_name=item_name))
+        
+#         return [Object(result) for result in cur.fetchall()]
+
+

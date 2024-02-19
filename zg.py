@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key
+from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key, get_col_key, get_attach_key as get_at_key, get_item_key as get_it_key
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import typer
@@ -158,6 +158,22 @@ def gen_item_md(attach_key: str, item_key: str) -> None:
     if topic:
         with open(topic.text + '.md', 'w', encoding='utf-8') as f:
             f.write(topic.__str_md__())
+
+@app.command(help='Get collection key')
+def get_col_key(col_name: str) -> None:
+    for col_key in get_col_key(col_name=col_name):
+        print(col_key)
+
+@app.command(help='Get attachment key')
+def get_attach_key(attach_name: str) -> None:
+    for attach_key in get_at_key(attach_name=attach_name):
+        print(attach_key)
+
+@app.command(help='Get item key')
+def get_item_key(attach_key: str, item_name: str) -> None:
+    for item_key in get_it_key(attach_key=attach_key, item_name=item_name):
+        print(item_key)
+
 
 if __name__ == "__main__":
     app()
