@@ -149,6 +149,22 @@ class Attach:
         res += ''.join([x.__repr__() for x in self.items])
         res += '</gingko-card>\n'
         return res
+    
+
+    def find_child(self, name: str):
+        """
+        Find item by name
+        """
+        res = None
+        for item in self.items:
+            if item.text.strip().lower().find(name.strip().lower()) > -1:
+                return item
+            else:
+                res = item.find_child(name=name)
+                if res is not None:
+                    return res
+        return res
+
 
 
     def find_child(self, name: str):
