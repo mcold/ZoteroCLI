@@ -358,13 +358,10 @@ class Item:
         starter = '#'
         # pictures
         if self.type != 3:
-            if self.rank < 4 or len(self.childs) == 0:
-                if len(self.childs) > 0:
-                    res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
-                else:
-                    res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+            if len(self.childs) > 0:
+                res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
             else:
-                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'            
         else:
             res = '> [!todo] #make_pict' + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         if self.comment:
