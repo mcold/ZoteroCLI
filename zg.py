@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key, get_col_key, get_attach_key as get_at_key, get_item_key as get_it_key
+from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key, get_col_key, get_attach_key as get_at_key, get_item_key as get_it_key, get_obj
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import typer
@@ -173,6 +173,24 @@ def get_attach_key(attach_name: str) -> None:
 def get_item_key(attach_key: str, item_name: str) -> None:
     for item_key in get_it_key(attach_key=attach_key, item_name=item_name):
         print(item_key)
+
+@app.command(help='Get object tree')
+def get_obj_tree(key: str, rank: int) -> None:
+    obj = get_obj(key=key)
+    for child in obj.childs:
+        if child.rank <= rank:
+            print(child.__str__(rank=rank))
+
+@app.command(help='Get object tree')
+def get_obj_tree_tag(key: str, rank: int, tag: str) -> None:
+    obj = get_obj(key=key)
+    for child in obj.childs:
+        if child.rank <= rank:
+            if tag is not None:
+                if tag in child.tags:
+                    print(child.__str__(rank=rank))
+            else:
+                print(child.__str__(rank=rank))
 
 
 if __name__ == "__main__":

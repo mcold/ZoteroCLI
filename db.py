@@ -9,8 +9,6 @@ id_num = 0
 g_zot_start = 'zotero://open-pdf/library/items/'
 g_link_title = 'zot'
 
-# TODO: move connection object to zg
-
 class Collection:
 
     attachs = list()
@@ -21,7 +19,7 @@ class Collection:
             self.name = t[1]
             self.parentId = t[2]
             self.attachs = self.get_attachs()
-            self.childs = list() # self.get_childs()
+            self.childs = list()
         else:
             self.id = None
             self.name = None
@@ -454,14 +452,119 @@ class Object:
     def __init__(self, t: tuple):
 
         if len(t) > 0:
-            self.key = t[0]
-            self.type = t[1]
+            self.id = t[0]
+            self.key = t[1]
             self.name = t[2]
-        else:
-            self.key = None
-            self.type = None
-            self.name = None
+            self.type_id = t[3]
+            self.type_name = t[4]
+            self.rank = t[5]
+            self.pageNum = t[6]
+            self.position = float(json.loads(t[7])['rects'][0][1]) if t[7] else None
+            self.childs = self.get_childs()
+            self.tags = get_tags(id = self.id)
+            self.resort()
+            self.relink_items_rank()
 
+        else:
+            self.id = None
+            self.key = None
+            self.name = None
+            self.type_id = None
+            self.type_name = None
+            self.rank = None
+            self.pageNum = None
+            self.position = None
+            self.childs = list()
+            self.tags = list()
+
+
+    def __str__(self, rank: int=None, tag: str=None) -> str:
+        start = '\t'*(self.rank-1)
+        res = ''
+        res += start + '{name}\n'.format(name=self.name)
+        res += start + '{key}\n'.format(key=self.key)
+        res += start + '\n'.join(['#' + tag for tag in self.tags])
+        for child in self.childs:
+            if rank is None:
+                res += '\n' + child.__str__()
+            else:
+                if child.rank <= rank:
+                    if tag is not None:
+                        if tag in self.tags:
+                            res += '\n' + child.__str__(rank=rank)
+                    else:
+                        res += '\n' + child.__str__(rank=rank)
+        return res
+
+    def get_childs(self):
+        with connect(db) as conn:
+            cur = conn.cursor()
+            cur.execute("""select t.itemID,
+                                    t.key,
+                                    t.name,
+                                    it.itemTypeID,
+                                    it.typeName,
+                                    t.rank,
+                                    t.pageNum,
+                                    t.position
+                                from (select i.itemID,
+                                            path as name,
+                                            i.key,
+                                            i.itemTypeID,
+                                            null as rank,
+                                            null as pageNum,
+                                            null as position
+                                        from itemAttachments ia
+                                        join items i on i.itemID = ia.ItemID
+                                    where ia.parentItemID = {item_id}
+                                    union all
+                                    select ian.itemID,
+                                            ian.text as name,
+                                            i.key,
+                                            i.itemTypeID,
+                                            case ian.color
+                                                when '#ffd400' then 1
+                                                    when '#ff6666' then 2
+                                                    when '#5fb236' then 3
+                                                    when '#2ea8e5' then 4
+                                                    when '#a28ae5' then 5
+                                                    when '#e56eee' then 6
+                                                    when '#f19837' then 7
+                                                    when '#aaaaaa' then 8
+                                                end as rank,
+                                            cast(ian.pageLabel as decimal) as pageNum,
+                                            ian.position
+                                        from itemAnnotations ian
+                                        join items i on i.itemID = ian.ItemID
+                                    where ian.parentItemID = {item_id}) t
+                                join itemTypes it on t.itemTypeID = it.itemTypeID;""".format(item_id = self.id))
+        return [Object(result) for result in cur.fetchall()]
+
+    def add_to_higher(self, d: dict, item, l_del_items) -> dict:
+        for r in range(item.rank-1, 0, -1):
+            item_parent = d.get(r)
+            if item_parent: 
+                item_parent.childs.append(item)
+                for x in range(item.rank, 9): d.pop(x, None)
+                d[item.rank] = item
+                l_del_items.append(item)
+                return d
+        for r in range(item.rank, 9): d.pop(r, None)
+        d[item.rank] = item
+        return d
+
+    def relink_items_rank(self):
+        d = dict()
+        l_del_items = list()
+        for item in self.childs: self.add_to_higher(d = d, item = item, l_del_items = l_del_items)
+        self.childs = [x for x in self.childs if x not in l_del_items]
+
+    def resort(self):
+        l_res = list()
+        for pn in sorted(list(set([x.pageNum for x in self.childs]))):
+            l_subitems = sorted([x for x in self.childs if x.pageNum == pn],  key=lambda item: float(item.position), reverse=True)
+            l_res.extend(l_subitems)
+        self.childs = l_res
 
 
 def get_collections(collectionName: str = None) -> list:
@@ -479,6 +582,7 @@ def get_collections(collectionName: str = None) -> list:
 
 
 def get_attach(attach_name: str) -> Attach:
+    print(attach_name)
     with connect(db) as conn:
         cur = conn.cursor()
         cur.execute("""select ia.itemID,
@@ -644,18 +748,48 @@ def get_item_key(attach_key: str, item_name: str) -> list:
         return [t[0] for t in cur.fetchall()]
 
 
-# def get_obj_by_key(key: str) -> list:
-#         with connect(db) as conn:
-#             cur = conn.cursor()
-#             cur.execute("""
-#                         select i.key
-#                         from itemAttachments ia
-#                         join itemAnnotations ian on ian.parentItemID = ia.itemID
-#                         join items i on i.itemID = ian.itemID
-#                         join items i2 on i2.itemID = ia.itemID and i2.key = '{attach_key}'
-#                         where lower(ian.text) like lower('%' || '{item_name}' || '%'); 
-#                 """.format(attach_key=attach_key, item_name=item_name))
-        
-#         return [Object(result) for result in cur.fetchall()]
+def get_obj(key: str) -> Object:
+     with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""select t.itemID,
+                              t.key,
+                              t.name,
+                              it.itemTypeID,
+                              it.typeName,
+                              t.rank,
+                              t.pageNum,
+                              t.position
+                         from (select i.itemID,
+                                      path as name,
+                                      i.key,
+                                      i.itemTypeID,
+                                      null as rank,
+                                      null as pageNum,
+                                      null as position
+                                from itemAttachments ia
+                                join items i on i.itemID = ia.ItemID
+                               where i.key = '{key}'
+                               union all
+                              select ian.itemID,
+                                     ian.text as name,
+                                     i.key,
+                                     i.itemTypeID,
+                                     case ian.color
+                                        when '#ffd400' then 1
+                                            when '#ff6666' then 2
+                                            when '#5fb236' then 3
+                                            when '#2ea8e5' then 4
+                                            when '#a28ae5' then 5
+                                            when '#e56eee' then 6
+                                            when '#f19837' then 7
+                                            when '#aaaaaa' then 8
+                                        end as rank,
+                                    cast(ian.pageLabel as decimal) as pageNum,
+                                    ian.position
+                                from itemAnnotations ian
+                                join items i on i.itemID = ian.ItemID
+                               where i.key = '{key}') t
+                        join itemTypes it on t.itemTypeID = it.itemTypeID;
+        """.format(key=key))
 
-
+        return Object(cur.fetchone())
