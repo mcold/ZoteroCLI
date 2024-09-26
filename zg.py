@@ -1,5 +1,5 @@
 # coding: utf-8
-from db import Collection, Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key, get_col_key, get_attach_key as get_at_key, get_item_key as get_it_key, get_obj
+from db import Gingko, Item, get_items, get_collections, get_attach, get_attach_by_key, get_col_key, get_attach_key as get_at_key, get_item_key as get_it_key, get_obj, unlock_ext_items
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import typer
@@ -191,6 +191,10 @@ def get_obj_tree_tag(key: str, rank: int, tag: str) -> None:
                     print(child.__str__(rank=rank))
             else:
                 print(child.__str__(rank=rank))
+
+@app.command(help='Unlock imported items')
+def unlock_items() -> None:
+    unlock_ext_items()
 
 
 if __name__ == "__main__":

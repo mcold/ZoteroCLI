@@ -135,7 +135,7 @@ class Attach:
     
     def __str_md__(self, n_tabs: int = 0):
         starter = '#'
-        res = starter*n_tabs + ' ' + self.name.strip('*') + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+        res = starter*n_tabs + ' ' + self.name.strip('*') + '([{title}] {zot_link})'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         for item in self.items:
             res += item.__str_md__(n_tabs = n_tabs + 1)
         return res
@@ -342,7 +342,7 @@ class Item:
             else:
                 res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '\n'
         else:
-            res = '> [!todo] #make_pict' + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+            res = '> [!todo] #make_pict' + '([{title}] {zot_link})'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         if self.comment:
             res += starter * (n_tabs + 1) + self.comment.strip() + '\n'
         if self.type == 3:
@@ -357,11 +357,11 @@ class Item:
         # pictures
         if self.type != 3:
             if len(self.childs) > 0:
-                res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+                res = starter * n_tabs + ' ' + (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}] {zot_link})'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
             else:
-                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'            
+                res = (self.text.strip('*') + ' ' + ' '.join(['#' + tag for tag in self.tags])).strip() + '([{title}] {zot_link})'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'            
         else:
-            res = '> [!todo] #make_pict' + '([{title}]({zot_link}))'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
+            res = '> [!todo] #make_pict' + '([{title}] {zot_link})'.format(title=g_link_title, zot_link=self.get_zotero_link()) +'\n'
         if self.comment:
             res += self.comment.strip() + '\n'
         for child in self.childs:
@@ -582,7 +582,6 @@ def get_collections(collectionName: str = None) -> list:
 
 
 def get_attach(attach_name: str) -> Attach:
-    print(attach_name)
     with connect(db) as conn:
         cur = conn.cursor()
         cur.execute("""select ia.itemID,
@@ -793,3 +792,11 @@ def get_obj(key: str) -> Object:
         """.format(key=key))
 
         return Object(cur.fetchone())
+     
+def unlock_ext_items() -> None:
+    with connect(db) as conn:
+        cur = conn.cursor()
+        cur.execute("""update itemAnnotations
+                          set isExternal = 0
+                       where isExternal = 1
+                    """)
